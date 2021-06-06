@@ -37,7 +37,7 @@ export const Content = styled.div`
   background: #E2EAFD;
   border-left: 1px solid #ccc;
 
-  padding: 28px 16px;
+  padding: 28px 16px 18px;
 
   overflow: scroll;
   overflow-x: hidden;
@@ -96,4 +96,27 @@ export const Button = styled.button`
   border: 0px;
 
   margin-left: 4px;
+`;
+
+export const RestartButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+
+  width: 140px;
+  height: 20px;
+
+  background: #fff;
+
+  border: 0px;
+  border-radius: 10px;
+
+  margin-top: 32px;
+
+  font-size: 12px;
+  font-weight: bold;
+  color: #484646;
+
+  opacity: 0.7;
 `;

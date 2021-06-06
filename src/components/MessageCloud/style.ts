@@ -11,7 +11,6 @@ export const Container = styled.div<ContainerProps>`
   position: relative;
   width: 100%;
 
-
   border: 1px solid #ccc;
   border-radius: 8px;
 
@@ -27,7 +26,6 @@ export const Container = styled.div<ContainerProps>`
 
   p {
     color: #484646;
-    text-align: justify;
     line-height: 22px;
     white-space: pre-line;
   }

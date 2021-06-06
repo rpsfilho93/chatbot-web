@@ -1,60 +1,40 @@
-import React, { FormEvent, useCallback, useState, useRef } from 'react';
-import MessageCloud, { Message } from '../MessageCloud';
-import TopicPanel, { Select } from '../TopicPanel';
+import React, { FormEvent, useCallback, useState, useRef, useEffect } from 'react';
 import { FiSend, FiChevronDown, FiChevronUp } from 'react-icons/fi';
-import api from '../../services/api';
+import ReactLoading from 'react-loading';
 import { v4 } from 'uuid';
 
-import { Container, Header, Content, TextInputBar, Form, Button } from './style';
+import MessageCloud, { Message } from '../MessageCloud';
+import TopicPanel, { Select } from '../TopicPanel';
 import QuestionList from '../QuestionsList';
+import { Topic } from '../../types/Topic';
+import api from '../../services/api';
+
+import { Container, Header, Content, TextInputBar, Form, Button, RestartButton } from './style';
 
 const welcomeMessage = 'Olá estudante de Engenharia de Computação! Você tem alguma dúvida sobre o curso? Eu vou te ajudar. Primeiro escolha um assunto:';
-const topics = ['Atividades Complementares', 'Componentes Curriculares', 'Estágio', 'Projeto Final de Curso'];
-
-const subtopics = [
-  [],
-  [],
-  [],
-  [
-    'Obrigações do estudante',
-    'Plano de trabalho',
-    'Trabalho Escrito',
-    'Sessão de Defesa',
-    'Nota Final e Frequência'
-  ],
-];
-
-const frequentQuestions = [
-  [
-    'Pergunta número 1.',
-    'Pergunta número 2.',
-    'Uma terceira pergunta.'
-  ],
-  [
-    'Pergunta número 3.',
-    'Pergunta número 4.',
-    'Uma terceira pergunta.'
-  ],
-  [
-    'O que é necessário para a matrícula na disciplina Estágio Supervisionado?',
-    'Quais são as atribuições do estudante estagiário?',
-    'O que é necessário para a conclusão da disciplina Estágio Supervisionado?',
-    'É possível aproveitar as atividades de estágio curricular obrigatório?'
-  ],
-  [
-    'Quais são as obrigações do estudante de Projeto Final?',
-    'O que contêm o plano de trabalho relativo às atividades do Projeto Final de Curso?',
-    'Uma terceira pergunta.'
-  ]
-];
 
 const Chatbot: React.FC = () => {
-  const [feed, setFeed] = useState<(Message | Select)[]>([{ id: v4(), type: 'topics', options: topics }, { id: v4(), header: welcomeMessage, direction: 'left' }]);
+  const [feed, setFeed] = useState<(Message | Select)[]>([]);
   const [question, setQuestion] = useState<string>('');
-  const [topic, setTopic] = useState<string>('');
   const [hidden, setHidden] = useState<boolean>(false);
-
+  const [showRestartButton, setShowRestartButton] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [selectedTopic, setSelectedTopic] = useState<string>('');
+  const [mainTopics, setMainTopics] = useState<string[]>([]);
+
+  useEffect(() => {
+    async function loadTopics() {
+      const response = await api.get<Topic[]>('/topics');
+
+      const topics = response.data;
+      setMainTopics(topics.map(tpc => tpc.name));
+      setFeed([{ id: v4(), type: 'topics', options: [...topics, { id: v4(), name: 'Outros' }] }, { id: v4(), header: welcomeMessage, direction: 'left' }]);
+    }
+    setLoading(true);
+    loadTopics();
+    setLoading(false);
+  }, []);
 
   const handleQuestionChange = useCallback(e => {
     setQuestion(e.target.value);
@@ -70,72 +50,64 @@ const Chatbot: React.FC = () => {
     e.preventDefault();
 
     if (question !== '') {
+
       setFeed(state => [{ id: v4(), text: question, direction: 'right' }, ...state]);
 
-      const response = await api.post('', { question });
+      setLoading(true);
+      const response = await api.get('', { params: { topic: selectedTopic, question } });
       const { answer, header } = response.data;
+      setLoading(false);
 
       setFeed(state => [{ id: v4(), header, text: answer, direction: 'left' }, ...state]);
       setQuestion('');
       scrollToBottom();
+      setShowRestartButton(true);
     }
 
-  }, [question, scrollToBottom]);
+  }, [question, scrollToBottom, selectedTopic]);
 
   const handleHidden = useCallback(() => {
     setHidden(!hidden)
   }, [hidden]);
 
-  const handleTopicChange = useCallback((value) => {
-    setTopic(value);
-
-    const index = topics.indexOf(value);
-
-    const subtopic = subtopics[index];
-
-    if (subtopic.length > 1) {
-      setFeed([
-        {
-          id: v4(),
-          options: subtopic,
-          type: 'subtopics'
-        },
-        {
-          id: v4(),
-          direction: 'left',
-          header: 'Escolha um dos tópicos abaixo:'
-        }, ...feed]);
-    } else {
-      const questions = frequentQuestions[index];
-
-      setFeed([
-        {
-          id: v4(),
-          options: questions,
-          type: 'questions'
-        },
-        {
-          id: v4(),
-          direction: 'left',
-          header: 'Essas são as perguntas mais frequentes sobre ' +
-            value +
-            '. Escolha uma opção:'
-        }, ...feed]);
+  const handleChooseTopic = useCallback(async (topic: Topic) => {
+    if (mainTopics.includes(topic.name)) {
+      setSelectedTopic(topic.name)
     }
 
+    if (topic.name === 'Outros') {
+      setFeed([{
+        id: v4(),
+        header: 'Digite a sua pergunta abaixo:',
+        text: 'Use o máximo de palavras-chave possível para descrever a sua dúvida.',
+        direction: 'left'
+      }, ...feed])
+    } else {
+      setLoading(true);
+      const response = await api.get('/branches', { params: { id: topic.id } });
+      const subtopics = response.data;
+
+      if (subtopics.length === 0) {
+        const response = await api.get('', { params: { topic: selectedTopic, question: topic.name } });
+        const { header, answer } = response.data;
+
+        setFeed([{ id: v4(), header, text: answer, direction: 'left' }, ...feed]);
+        setShowRestartButton(true);
+      } else {
+        setFeed([{ id: v4(), type: 'subtopics', options: subtopics }, { id: v4(), direction: 'left', header: 'Escolha uma opção abaixo:' }, ...feed])
+      }
+      setLoading(false);
+    }
+  }, [feed, selectedTopic, mainTopics]);
+
+  const handleClickRestartButton = useCallback(async () => {
+    setShowRestartButton(false);
+    const response = await api.get<Topic[]>('/topics');
+
+    const topics = response.data;
+
+    setFeed([{ id: v4(), type: 'topics', options: [...topics, { id: v4(), name: 'Outros' }] }, { id: v4(), header: 'Escolha um assunto:', direction: 'left' }, ...feed]);
   }, [feed]);
-
-  const handleSubTopicChange = useCallback((subtopic: string) => {
-    console.log(subtopic);
-  }, []);
-
-  const handleFrequentQuestion = useCallback(async (question: string) => {
-    const response = await api.post('', { question });
-    const { answer, header } = response.data;
-
-    setFeed(state => [{ id: v4(), header, text: answer, direction: 'left' }, ...state]);
-    scrollToBottom();
-  }, [scrollToBottom]);
 
   return (
     <Container>
@@ -147,12 +119,14 @@ const Chatbot: React.FC = () => {
       {!hidden && (
         <>
           <Content>
+            {loading && <ReactLoading type={'bars'} color={'#4CD8ED'} height={'10%'} width={'10%'} />}
+
             <div ref={messagesEndRef} />
+            {showRestartButton && <RestartButton onClick={handleClickRestartButton}><span>Ver principais assuntos</span></RestartButton>}
             {feed.map(element => {
               if ('options' in element) {
-                if (element.type === 'topics') return <TopicPanel key={element.id} topics={element.options} onValueChange={handleTopicChange} />;
-                if (element.type === 'subtopics') return <QuestionList key={element.id} questions={element.options} onValueChange={handleSubTopicChange} />;
-                else return <QuestionList key={element.id} questions={element.options} onValueChange={handleFrequentQuestion} />;
+                if (element.type === 'topics') return <TopicPanel key={element.id} topics={element.options} onValueChange={handleChooseTopic} />;
+                else return <QuestionList key={element.id} questions={element.options} onValueChange={handleChooseTopic} />;
               } else {
                 return <MessageCloud key={element.id} message={element} />;
               }
